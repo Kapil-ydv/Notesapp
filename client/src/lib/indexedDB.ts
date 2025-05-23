@@ -1,69 +1,119 @@
 import Dexie, { Table } from 'dexie';
 import { LocalNote } from '@shared/schema';
 
-export class NotesDB extends Dexie {
+class NotesDatabase extends Dexie {
   notes!: Table<LocalNote>;
 
   constructor() {
-    super('NotesDatabase');
+    super('NotesApp');
     this.version(1).stores({
-      notes: 'id, title, content, updatedAt, synced'
+      notes: 'id, title, content, updatedAt'
     });
   }
 }
 
-export const db = new NotesDB();
+const database = new NotesDatabase();
 
-export class IndexedDBManager {
-  async getAllNotes(): Promise<LocalNote[]> {
-    return await db.notes.orderBy('updatedAt').reverse().toArray();
+class NotesRepository {
+  private db = database;
+
+  async findAll(): Promise<LocalNote[]> {
+    try {
+      return await this.db.notes.orderBy('updatedAt').reverse().toArray();
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      return [];
+    }
   }
 
-  async getNote(id: string): Promise<LocalNote | undefined> {
-    return await db.notes.get(id);
+  async findById(id: string): Promise<LocalNote | undefined> {
+    try {
+      return await this.db.notes.get(id);
+    } catch (error) {
+      console.error('Error fetching note:', error);
+      return undefined;
+    }
   }
 
-  async createNote(note: LocalNote): Promise<void> {
-    await db.notes.add(note);
+  async create(note: LocalNote): Promise<void> {
+    try {
+      await this.db.notes.add(note);
+    } catch (error) {
+      console.error('Error creating note:', error);
+      throw error;
+    }
   }
 
-  async updateNote(id: string, updates: Partial<LocalNote>): Promise<void> {
-    await db.notes.update(id, {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
+  async update(id: string, changes: Partial<LocalNote>): Promise<void> {
+    try {
+      const timestamp = new Date().toISOString();
+      await this.db.notes.update(id, {
+        ...changes,
+        updatedAt: timestamp
+      });
+    } catch (error) {
+      console.error('Error updating note:', error);
+      throw error;
+    }
   }
 
-  async deleteNote(id: string): Promise<void> {
-    await db.notes.delete(id);
+  async remove(id: string): Promise<void> {
+    try {
+      await this.db.notes.delete(id);
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      throw error;
+    }
   }
 
-  async getUnsyncedNotes(): Promise<LocalNote[]> {
-    return await db.notes.where('synced').equals(false).toArray();
+  async findUnsynced(): Promise<LocalNote[]> {
+    try {
+      const allNotes = await this.db.notes.toArray();
+      return allNotes.filter(note => !note.synced);
+    } catch (error) {
+      console.error('Error fetching unsynced notes:', error);
+      return [];
+    }
   }
 
-  async markAsSynced(id: string): Promise<void> {
-    await db.notes.update(id, { synced: true });
+  async markSynced(id: string): Promise<void> {
+    try {
+      await this.db.notes.update(id, { synced: true });
+    } catch (error) {
+      console.error('Error marking note as synced:', error);
+    }
   }
 
-  async markAsUnsynced(id: string): Promise<void> {
-    await db.notes.update(id, { synced: false });
+  async markUnsynced(id: string): Promise<void> {
+    try {
+      await this.db.notes.update(id, { synced: false });
+    } catch (error) {
+      console.error('Error marking note as unsynced:', error);
+    }
   }
 
-  async searchNotes(query: string): Promise<LocalNote[]> {
-    if (!query.trim()) {
-      return this.getAllNotes();
+  async search(query: string): Promise<LocalNote[]> {
+    if (!query?.trim()) {
+      return this.findAll();
     }
 
-    const lowerQuery = query.toLowerCase();
-    return await db.notes
-      .filter(note => 
-        note.title.toLowerCase().includes(lowerQuery) ||
-        note.content.toLowerCase().includes(lowerQuery)
-      )
-      .reverse()
-      .sortBy('updatedAt');
+    try {
+      const searchTerm = query.toLowerCase();
+      const allNotes = await this.db.notes.toArray();
+      
+      const matchingNotes = allNotes.filter(note => 
+        note.title.toLowerCase().includes(searchTerm) ||
+        note.content.toLowerCase().includes(searchTerm)
+      );
+
+      return matchingNotes.sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+    } catch (error) {
+      console.error('Error searching notes:', error);
+      return [];
+    }
   }
 }
 
-export const indexedDBManager = new IndexedDBManager();
+export const notesRepository = new NotesRepository();

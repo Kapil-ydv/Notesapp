@@ -6,7 +6,7 @@ import { NotesList } from './NotesList';
 import { NoteEditor } from './NoteEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, Wifi, WifiOff, Check, Clock, AlertCircle } from 'lucide-react';
+import { Search, Plus, Check, Clock, AlertCircle } from 'lucide-react';
 
 export function NotesApp() {
   const {

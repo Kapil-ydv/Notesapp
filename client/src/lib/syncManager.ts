@@ -1,5 +1,5 @@
 import { apiRequest } from './queryClient';
-import { indexedDBManager } from './indexedDB';
+import { notesRepository } from './indexedDB';
 import { LocalNote } from '@shared/schema';
 
 export type SyncStatus = 'synced' | 'unsynced' | 'syncing' | 'error';
@@ -51,30 +51,26 @@ export class SyncManager {
       const serverNotes: LocalNote[] = await response.json();
 
       for (const serverNote of serverNotes) {
-        const localNote = await indexedDBManager.getNote(serverNote.id);
+        const localNote = await notesRepository.findById(serverNote.id);
         
         if (!localNote) {
-          // Note doesn't exist locally, add it
-          await indexedDBManager.createNote({
+          await notesRepository.create({
             ...serverNote,
             synced: true
           });
           this.setSyncStatus(serverNote.id, 'synced');
         } else if (localNote.synced) {
-          // Local note is synced, check if server version is newer
           const serverDate = new Date(serverNote.updatedAt);
           const localDate = new Date(localNote.updatedAt);
           
           if (serverDate > localDate) {
-            // Server version is newer, update local
-            await indexedDBManager.updateNote(serverNote.id, {
+            await notesRepository.update(serverNote.id, {
               ...serverNote,
               synced: true
             });
             this.setSyncStatus(serverNote.id, 'synced');
           }
         }
-        // If local note is unsynced, we'll handle it in pushToServer
       }
     } catch (error) {
       console.error('Failed to pull from server:', error);
@@ -82,17 +78,15 @@ export class SyncManager {
   }
 
   private async pushToServer(): Promise<void> {
-    const unsyncedNotes = await indexedDBManager.getUnsyncedNotes();
+    const unsyncedNotes = await notesRepository.findUnsynced();
 
     for (const note of unsyncedNotes) {
       this.setSyncStatus(note.id, 'syncing');
       
       try {
-        // Check if note exists on server
         const existsOnServer = await this.noteExistsOnServer(note.id);
         
         if (existsOnServer) {
-          // Update existing note
           await apiRequest('PUT', `/api/notes/${note.id}`, {
             id: note.id,
             title: note.title,
@@ -100,7 +94,6 @@ export class SyncManager {
             updatedAt: note.updatedAt
           });
         } else {
-          // Create new note
           await apiRequest('POST', '/api/notes', {
             id: note.id,
             title: note.title,
@@ -109,7 +102,7 @@ export class SyncManager {
           });
         }
 
-        await indexedDBManager.markAsSynced(note.id);
+        await notesRepository.markSynced(note.id);
         this.setSyncStatus(note.id, 'synced');
       } catch (error) {
         console.error(`Failed to sync note ${note.id}:`, error);
@@ -128,7 +121,7 @@ export class SyncManager {
   }
 
   async syncNote(noteId: string): Promise<void> {
-    const note = await indexedDBManager.getNote(noteId);
+    const note = await notesRepository.findById(noteId);
     if (!note || note.synced) return;
 
     this.setSyncStatus(noteId, 'syncing');
@@ -152,7 +145,7 @@ export class SyncManager {
         });
       }
 
-      await indexedDBManager.markAsSynced(noteId);
+      await notesRepository.markSynced(noteId);
       this.setSyncStatus(noteId, 'synced');
     } catch (error) {
       console.error(`Failed to sync note ${noteId}:`, error);

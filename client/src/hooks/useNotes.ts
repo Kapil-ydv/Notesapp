@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { LocalNote } from '@shared/schema';
-import { indexedDBManager } from '@/lib/indexedDB';
+import { notesRepository } from '@/lib/indexedDB';
 import { syncManager, SyncStatus } from '@/lib/syncManager';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -13,13 +13,11 @@ export function useNotes() {
 
   const selectedNote = notes.find(note => note.id === selectedNoteId);
 
-  // Load notes from IndexedDB
   const loadNotes = useCallback(async () => {
     try {
-      const loadedNotes = await indexedDBManager.getAllNotes();
+      const loadedNotes = await notesRepository.findAll();
       setNotes(loadedNotes);
       
-      // Select first note if none selected
       if (!selectedNoteId && loadedNotes.length > 0) {
         setSelectedNoteId(loadedNotes[0].id);
       }
@@ -30,10 +28,9 @@ export function useNotes() {
     }
   }, [selectedNoteId]);
 
-  // Search notes
   const searchNotes = useCallback(async (query: string) => {
     try {
-      const searchResults = await indexedDBManager.searchNotes(query);
+      const searchResults = await notesRepository.search(query);
       setNotes(searchResults);
     } catch (error) {
       console.error('Failed to search notes:', error);
@@ -51,7 +48,7 @@ export function useNotes() {
     };
 
     try {
-      await indexedDBManager.createNote(newNote);
+      await notesRepository.create(newNote);
       await loadNotes();
       setSelectedNoteId(newNote.id);
       return newNote;
@@ -61,10 +58,9 @@ export function useNotes() {
     }
   }, [loadNotes]);
 
-  // Update note with debouncing
   const updateNote = useCallback(async (id: string, updates: Partial<LocalNote>) => {
     try {
-      await indexedDBManager.updateNote(id, {
+      await notesRepository.update(id, {
         ...updates,
         synced: false
       });
@@ -75,10 +71,9 @@ export function useNotes() {
     }
   }, [loadNotes]);
 
-  // Delete note
   const deleteNote = useCallback(async (id: string) => {
     try {
-      await indexedDBManager.deleteNote(id);
+      await notesRepository.remove(id);
       await loadNotes();
       
       // Select another note if the deleted one was selected
